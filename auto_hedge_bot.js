@@ -6,7 +6,7 @@
 
 (async function autoHedgeBotV3_9() {
     console.clear();
-    console.log("%c🤖 脚本已启动 V3.9 (宽容检测版)", "color: #00ff00; font-size: 16px; font-weight: bold;");
+    console.log("%c🤖 脚本已启动 ", "color: #00ff00; font-size: 16px; font-weight: bold;");
 
     // === 配置区域 ===
     const CONFIG = {
@@ -232,4 +232,5 @@
     function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 })();
+
 
