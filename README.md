@@ -30,6 +30,7 @@
 2. **MoreLogin 客户端**
    - 用于管理浏览器环境，避免账号关联
    - 下载地址：https://www.morelogin.com/
+   - 推荐码：AAQyOd2HcKBg
 
 3. **ChromeDriver**（可选）
    - 如果使用浏览器路径方式，可能需要手动安装 ChromeDriver
