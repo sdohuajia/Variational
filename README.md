@@ -39,7 +39,7 @@
 ## 📦 安装步骤
 
 ### 1. 克隆或下载项目
-
+git clone https://github.com/sdohuajia/Variational.git
 将项目文件下载到本地目录，确保包含以下文件：
 - `hedge_bot.py` - 主脚本文件
 - `config.py` - 配置文件
