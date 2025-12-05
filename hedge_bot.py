@@ -9,19 +9,13 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import TimeoutException
 from datetime import datetime, timedelta
 import time
 import threading
 import requests
 import json
 
-# 可选：自动管理 ChromeDriver（需要先安装: pip install webdriver-manager）
-try:
-    from webdriver_manager.chrome import ChromeDriverManager
-    USE_AUTO_DRIVER = True
-except ImportError:
-    USE_AUTO_DRIVER = False
-    print("提示: 安装 webdriver-manager 可自动管理 ChromeDriver: pip install webdriver-manager")
 
 class HedgeBot:
     def __init__(self, driver, name, is_long=True, tp_value='3', sl_value='3'):
@@ -43,7 +37,7 @@ class HedgeBot:
             return False
     
     def select_trading_pair(self, pair='BTC'):
-        """选择交易币种"""
+        """选择交易币种（不打印消息，由调用者统一处理）"""
         try:
             # 首先检查是否已经有弹窗打开（币种选择弹窗）
             modal_open = False
@@ -52,13 +46,11 @@ class HedgeBot:
                 modal_titles = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'Select an Asset') or contains(text(), '选择资产') or contains(text(), '选择币种')]")
                 if modal_titles:
                     modal_open = True
-                    print(f"[{self.name}] 检测到币种选择弹窗已打开")
             except:
                 pass
             
             # 如果弹窗已打开，直接在弹窗中选择
             if modal_open:
-                print(f"[{self.name}] 在弹窗中查找并选择 {pair}...")
                 time.sleep(0.5)
                 
                 # 方法1: 在弹窗中查找包含币种名称的行或按钮
@@ -77,20 +69,18 @@ class HedgeBot:
                                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elem)
                                 time.sleep(0.2)
                                 elem.click()
-                                print(f"[{self.name}] 已在弹窗中选择 {pair}")
                                 time.sleep(0.5)
                                 
                                 # 等待弹窗关闭
                                 time.sleep(0.5)
-                                return True
+                                return {'success': True, 'method': '弹窗中直接选择'}
                         except:
                             continue
                 except Exception as e:
-                    print(f"[{self.name}] 在弹窗中选择失败: {e}")
+                    pass
             
             # 如果弹窗未打开，尝试点击币种选择按钮打开弹窗
             if not modal_open:
-                print(f"[{self.name}] 尝试打开币种选择弹窗...")
                 # 查找币种选择按钮（包含币种图标和文字的按钮）
                 buttons = self.driver.find_elements(By.TAG_NAME, 'button')
                 pair_btn = None
@@ -115,16 +105,13 @@ class HedgeBot:
                     self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", pair_btn)
                     time.sleep(0.2)
                     pair_btn.click()
-                    print(f"[{self.name}] 已点击币种选择按钮，等待弹窗打开...")
                     time.sleep(1)  # 等待弹窗打开
                     modal_open = True
                 else:
-                    print(f"[{self.name}] 未找到币种选择按钮")
-                    return False
+                    return {'success': False, 'error': '未找到币种选择按钮'}
             
             # 在弹窗中选择币种
             if modal_open:
-                print(f"[{self.name}] 在弹窗中查找 {pair}...")
                 time.sleep(0.5)
                 
                 # 方法1: 查找包含币种名称的行（表格行）
@@ -143,13 +130,12 @@ class HedgeBot:
                                 time.sleep(0.2)
                                 # 点击行或行中的币种文字
                                 row.click()
-                                print(f"[{self.name}] 已在弹窗中选择 {pair} (通过行点击)")
                                 time.sleep(0.5)
-                                return True
+                                return {'success': True, 'method': '通过行点击'}
                         except:
                             continue
                 except Exception as e:
-                    print(f"[{self.name}] 通过行选择失败: {e}")
+                    pass
                 
                 # 方法2: 查找包含币种文字的可点击元素
                 try:
@@ -164,23 +150,18 @@ class HedgeBot:
                                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elem)
                                 time.sleep(0.2)
                                 elem.click()
-                                print(f"[{self.name}] 已在弹窗中选择 {pair} (通过元素点击)")
                                 time.sleep(0.5)
-                                return True
+                                return {'success': True, 'method': '通过元素点击'}
                         except:
                             continue
                 except Exception as e:
-                    print(f"[{self.name}] 通过元素选择失败: {e}")
+                    pass
                 
-                print(f"[{self.name}] 在弹窗中未找到 {pair}，可能已选择或需要手动选择")
-                return False
+                return {'success': False, 'error': f'在弹窗中未找到 {pair}'}
             
-            return False
+            return {'success': False, 'error': '未知错误'}
         except Exception as e:
-            print(f"[{self.name}] 选择币种失败: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
+            return {'success': False, 'error': str(e)}
     
     def select_order_direction(self, is_long=True):
         """选择开仓方向：开多（买）或开空（卖）"""
@@ -288,7 +269,7 @@ class HedgeBot:
             return self.current_direction
     
     def fill_quantity(self, quantity):
-        """填写开仓数量"""
+        """填写开仓数量（不打印消息，由调用者统一处理）"""
         try:
             # 查找数量输入框
             quantity_input = self.driver.find_element(By.CSS_SELECTOR, 'input[data-testid="quantity-input"]')
@@ -300,15 +281,33 @@ class HedgeBot:
                 self.driver.execute_script(f"arguments[0].value = '{quantity}';", quantity_input)
                 self.driver.execute_script("arguments[0].dispatchEvent(new Event('input', {bubbles: true}));", quantity_input)
                 self.driver.execute_script("arguments[0].dispatchEvent(new Event('change', {bubbles: true}));", quantity_input)
-                print(f"[{self.name}] 已填写开仓数量: {quantity}")
                 time.sleep(0.3)
                 return True
             else:
-                print(f"[{self.name}] 未找到数量输入框")
                 return False
         except Exception as e:
-            print(f"[{self.name}] 填写数量失败: {e}")
             return False
+    
+    def check_insufficient_balance(self):
+        """检查余额是否不足（通过检查下单按钮状态）"""
+        try:
+            # 查找下单按钮
+            submit_btn = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="submit-button"]')
+            if submit_btn:
+                # 检查按钮是否被禁用
+                is_disabled = submit_btn.get_attribute('disabled') is not None
+                btn_text = submit_btn.text.strip()
+                
+                # 检查按钮文本是否包含余额不足的提示
+                insufficient_keywords = ['购买力超限', '余额不足', 'Insufficient', '余额不够', '资金不足']
+                has_insufficient_text = any(keyword in btn_text for keyword in insufficient_keywords)
+                
+                if is_disabled or has_insufficient_text:
+                    return True, btn_text
+        except Exception as e:
+            # 如果找不到按钮或出错，返回 False
+            pass
+        return False, None
     
     def fill_tp_sl(self, tp_value=None, sl_value=None):
         """填写止盈止损"""
@@ -363,22 +362,251 @@ class HedgeBot:
             return False
     
     def place_order(self):
-        """下单"""
+        """下单（不打印消息，由调用者统一处理）"""
         try:
-            btn = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="submit-button"]')
-            if btn and btn.is_displayed():
-                btn.click()
-                print(f"[{self.name}] 已点击下单按钮")
-                return True
+            # 尝试多次点击，确保下单成功
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    btn = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="submit-button"]')
+                    if btn:
+                        # 检查按钮是否可见且可点击
+                        if not btn.is_displayed():
+                            time.sleep(0.2)
+                            continue
+                        
+                        # 检查按钮是否被禁用
+                        is_disabled = btn.get_attribute('disabled') is not None
+                        if is_disabled:
+                            # 如果按钮被禁用，等待一下再试
+                            time.sleep(0.3)
+                            continue
+                        
+                        # 尝试点击按钮
+                        try:
+                            btn.click()
+                        except:
+                            # 如果普通点击失败，使用JavaScript点击
+                            self.driver.execute_script("arguments[0].click();", btn)
+                        
+                        # 点击后等待一下，检查按钮状态是否变化（说明点击生效）
+                        time.sleep(0.2)
+                        
+                        # 再次检查按钮状态，如果按钮被禁用或文本变化，说明点击可能生效了
+                        try:
+                            btn_after = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="submit-button"]')
+                            # 如果按钮状态发生变化，或者按钮暂时不可见，可能说明点击生效了
+                            if btn_after.get_attribute('disabled') is not None or not btn_after.is_displayed():
+                                return True
+                        except:
+                            # 如果找不到按钮了，可能说明页面状态变化，点击可能生效了
+                            return True
+                        
+                        return True
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        time.sleep(0.2)
+                        continue
+                    else:
+                        return False
         except Exception as e:
-            print(f"[{self.name}] 下单失败: {e}")
+            pass
         return False
+
+    def _ensure_realized_pnl_tab(self):
+        """确保已实现PnL标签被选中"""
+        try:
+            # 尝试多种方式查找"已实现PnL"标签
+            visible_tab = None
+            
+            # 方式1: 通过文本内容查找所有按钮
+            all_buttons = self.driver.find_elements(By.TAG_NAME, 'button')
+            for btn in all_buttons:
+                try:
+                    btn_text = btn.text.strip()
+                    # 匹配 "已实现PnL" 或 "Realized PnL" 或 "已实现 PnL"
+                    if ('已实现' in btn_text and 'PnL' in btn_text) or ('Realized' in btn_text and 'PnL' in btn_text):
+                        if btn.is_displayed():
+                            visible_tab = btn
+                            break
+                except:
+                    continue
+            
+            # 方式2: 通过 role='tab' 属性查找
+            if not visible_tab:
+                tabs = self.driver.find_elements(By.CSS_SELECTOR, 'button[role="tab"]')
+                for tab in tabs:
+                    try:
+                        tab_text = tab.text.strip()
+                        if ('已实现' in tab_text and 'PnL' in tab_text) or ('Realized' in tab_text and 'PnL' in tab_text):
+                            if tab.is_displayed():
+                                visible_tab = tab
+                                break
+                    except:
+                        continue
+            
+            # 方式3: 通过包含 span 的按钮查找
+            if not visible_tab:
+                spans = self.driver.find_elements(By.TAG_NAME, 'span')
+                for span in spans:
+                    try:
+                        span_text = span.text.strip()
+                        if ('已实现' in span_text and 'PnL' in span_text) or ('Realized' in span_text and 'PnL' in span_text):
+                            # 找到包含这个 span 的可点击父元素
+                            parent = span.find_element(By.XPATH, './ancestor::button')
+                            if parent and parent.is_displayed():
+                                visible_tab = parent
+                                break
+                    except:
+                        continue
+            
+            if not visible_tab:
+                raise Exception("未找到已实现PnL标签按钮")
+            
+            # 不再检查激活状态，直接点击标签（确保切换到正确的tab）
+            # 滚动到标签可见并点击
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", visible_tab)
+            time.sleep(0.3)
+            
+            # 强制使用 JS 点击，避免被其他元素遮挡
+            self.driver.execute_script("arguments[0].click();", visible_tab)
+            
+            time.sleep(0.8)
+            return True
+        except Exception as e:
+            print(f"[{self.name}] 切换到已实现PnL标签失败: {e}")
+            return False
+
+    def _ensure_positions_tab(self):
+        """切换回仓位标签"""
+        try:
+            visible_tab = None
+            
+            # 通过文本内容查找"仓位"或"Positions"标签
+            all_buttons = self.driver.find_elements(By.TAG_NAME, 'button')
+            for btn in all_buttons:
+                try:
+                    btn_text = btn.text.strip()
+                    # 匹配 "仓位" 或 "Positions"
+                    if btn_text == '仓位' or btn_text == 'Positions' or ('仓位' in btn_text and 'PnL' not in btn_text):
+                        if btn.is_displayed():
+                            visible_tab = btn
+                            break
+                except:
+                    continue
+            
+            if not visible_tab:
+                # 通过 role='tab' 属性查找
+                tabs = self.driver.find_elements(By.CSS_SELECTOR, 'button[role="tab"]')
+                for tab in tabs:
+                    try:
+                        tab_text = tab.text.strip()
+                        if tab_text == '仓位' or tab_text == 'Positions':
+                            if tab.is_displayed():
+                                visible_tab = tab
+                                break
+                    except:
+                        continue
+            
+            if not visible_tab:
+                print(f"[{self.name}] 未找到仓位标签")
+                return False
+            
+            # 强制使用 JS 点击
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", visible_tab)
+            time.sleep(0.2)
+            self.driver.execute_script("arguments[0].click();", visible_tab)
+            # 已切换回仓位标签（不打印，减少日志冗余）
+            time.sleep(0.5)
+            return True
+        except Exception as e:
+            print(f"[{self.name}] 切换回仓位标签失败: {e}")
+            return False
+
+    def get_realized_pnl(self):
+        """读取最新一条已实现PnL记录 (返回 amount, currency, raw_text)"""
+        try:
+            if not self._ensure_realized_pnl_tab():
+                return None
+
+            # 等待表格行出现（不强制要求可见，避免受容器滚动/遮挡影响）
+            # 说明：有些情况下交易所写入已实现PnL记录会有数秒延迟，这里给足 15 秒缓冲，只在每轮平仓后调用一次，不影响平仓时效
+            wait = WebDriverWait(self.driver, 15)
+            row = wait.until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, 'div[data-testid="transfers-table-row"]')
+                )
+            )
+
+            columns = row.find_elements(By.CSS_SELECTOR, 'div.leading-6')
+            if len(columns) < 3:
+                print(f"[{self.name}] 未找到已实现PnL列数据")
+                return None
+
+            asset = columns[1].text.strip()
+            amount_text = columns[2].text.strip()
+
+            amount_value = None
+            normalized_text = amount_text.replace(',', '').replace('USDC', '').strip()
+            try:
+                amount_value = float(normalized_text)
+            except ValueError:
+                pass
+
+            return {
+                'amount_text': amount_text,
+                'amount_value': amount_value,
+                'currency': asset or 'USDC'
+            }
+        except TimeoutException:
+            # 超时多数是当前还没有任何已实现PnL记录（或记录尚未写入表格）
+            print(f"[{self.name}] 读取已实现PnL超时（已等待15秒）：当前可能还没有PnL记录")
+        except Exception as e:
+            # 避免打印整段 Selenium 堆栈，只给简短提示
+            msg = getattr(e, "msg", None) or str(e)
+            print(f"[{self.name}] 读取已实现PnL失败: {msg}")
+            return None
+
+    def report_realized_pnl(self):
+        """获取当前已实现PnL信息（返回数据，不打印）"""
+        try:
+            pnl = self.get_realized_pnl()
+            if not pnl:
+                return None
+
+            currency = pnl['currency'] or 'USDC'
+            if pnl['amount_value'] is not None:
+                amount_display = f"{pnl['amount_value']:+.4f}"
+            else:
+                amount_display = pnl['amount_text']
+
+            return {
+                'amount_display': amount_display,
+                'amount_value': pnl.get('amount_value'),  # 确保包含数值
+                'currency': currency
+            }
+        finally:
+            # 无论成功与否，都切换回仓位标签
+            self._ensure_positions_tab()
     
     def close_position(self):
         """主动平仓"""
         try:
             print(f"[{self.name}] 开始平仓流程...")
-            row = self.driver.find_element(By.CSS_SELECTOR, 'div[data-testid="positions-table-row"]')
+            
+            # 首先检查是否还有持仓（可能已经被TP/SL自动平仓）
+            if not self.has_position_now():
+                print(f"[{self.name}] ✅ 持仓已不存在，可能已被TP/SL自动平仓")
+                return True
+            
+            # 尝试找到持仓行
+            try:
+                row = self.driver.find_element(By.CSS_SELECTOR, 'div[data-testid="positions-table-row"]')
+            except:
+                # 如果找不到持仓行，说明已经平仓了
+                print(f"[{self.name}] ✅ 未找到持仓行，持仓可能已被平仓")
+                return True
+            
             buttons = row.find_elements(By.TAG_NAME, 'button')
             
             # 找"关闭"按钮（在持仓行中）
@@ -396,9 +624,8 @@ class HedgeBot:
             
             if close_btn:
                 print(f"[{self.name}] 找到关闭按钮，准备点击...")
-                # 滚动到按钮可见
+                # 滚动到按钮可见（不等待）
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", close_btn)
-                time.sleep(0.3)
                 
                 # 点击关闭按钮
                 try:
@@ -407,78 +634,126 @@ class HedgeBot:
                     self.driver.execute_script("arguments[0].click();", close_btn)
                 
                 print(f"[{self.name}] 已点击关闭按钮，等待平仓弹窗...")
-                time.sleep(1.5)  # 等待弹窗出现
+                # 使用智能等待，最多等待1秒（加快速度）
+                try:
+                    wait = WebDriverWait(self.driver, 1)
+                    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'button[data-testid="close-position-button"]')))
+                except:
+                    time.sleep(0.3)  # 如果智能等待失败，短暂等待
+                
+                # 再次检查持仓状态（可能在点击关闭前已经被TP/SL平仓）
+                if not self.has_position_now():
+                    print(f"[{self.name}] ✅ 点击关闭后，持仓已消失，可能已被TP/SL自动平仓")
+                    return True
                 
                 # 查找平仓确认按钮（使用 data-testid="close-position-button"）
+                confirm_btn = None
                 try:
-                    confirm_btn = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="close-position-button"]')
-                    if confirm_btn and confirm_btn.is_displayed():
-                        print(f"[{self.name}] 找到平仓确认按钮: {confirm_btn.text}")
-                        # 滚动到按钮可见
-                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", confirm_btn)
-                        time.sleep(0.3)
-                        
-                        # 点击确认按钮
-                        try:
-                            confirm_btn.click()
-                        except:
-                            self.driver.execute_script("arguments[0].click();", confirm_btn)
-                        
-                        print(f"[{self.name}] ✅ 已点击平仓确认按钮")
-                        time.sleep(2)  # 等待平仓完成
-                        
-                        # 检查弹窗是否关闭
-                        try:
-                            # 如果弹窗还在，尝试关闭
-                            close_modal_btn = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="close-button"]')
-                            if close_modal_btn and close_modal_btn.is_displayed():
-                                close_modal_btn.click()
-                                time.sleep(0.5)
-                        except:
-                            pass
-                        
-                        return True
-                    else:
-                        print(f"[{self.name}] ⚠️  平仓确认按钮不可见")
-                except Exception as e:
-                    # 可能已经平仓了，检查是否还有持仓
-                    print(f"[{self.name}] ⚠️  未找到平仓确认按钮: {e}")
+                    # 使用 WebDriverWait 等待按钮出现（最多等待1秒，加快速度）
+                    wait = WebDriverWait(self.driver, 1)
+                    confirm_btn = wait.until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="close-position-button"]'))
+                    )
+                except:
+                    # 如果等待超时，尝试直接查找
                     try:
-                        # 检查是否还有持仓行
-                        row = self.driver.find_element(By.CSS_SELECTOR, 'div[data-testid="positions-table-row"]')
-                        # 如果还能找到持仓行，说明还没平仓，尝试备用方法
-                        print(f"[{self.name}] 持仓行仍存在，尝试备用方法...")
-                        all_buttons = self.driver.find_elements(By.TAG_NAME, 'button')
-                        for btn in all_buttons:
+                        confirm_btn = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="close-position-button"]')
+                    except:
+                        pass
+                
+                if confirm_btn:
+                    try:
+                        if confirm_btn.is_displayed():
+                            print(f"[{self.name}] 找到平仓确认按钮: {confirm_btn.text}")
+                            # 滚动到按钮可见（不等待）
+                            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", confirm_btn)
+                            
+                            # 点击确认按钮
+                            try:
+                                confirm_btn.click()
+                            except:
+                                self.driver.execute_script("arguments[0].click();", confirm_btn)
+                            
+                            print(f"[{self.name}] ✅ 已点击平仓确认按钮")
+                            # 使用智能等待持仓消失，最多等待1.5秒（加快速度）
+                            try:
+                                wait = WebDriverWait(self.driver, 1.5)
+                                wait.until(lambda driver: not self.has_position_now())
+                                print(f"[{self.name}] ✅ 平仓成功，持仓已消失")
+                                return True
+                            except:
+                                # 如果智能等待失败，短暂等待后检查
+                                time.sleep(0.3)
+                                if not self.has_position_now():
+                                    print(f"[{self.name}] ✅ 平仓成功，持仓已消失")
+                                    return True
+                                else:
+                                    print(f"[{self.name}] ⚠️  点击确认后，持仓仍然存在")
+                                    return False
+                    except Exception as e:
+                        print(f"[{self.name}] ⚠️  点击确认按钮时出错: {e}")
+                
+                # 如果找不到确认按钮，检查持仓状态
+                print(f"[{self.name}] ⚠️  未找到平仓确认按钮，检查持仓状态...")
+                time.sleep(0.2)  # 短暂等待（加快速度）
+                
+                # 再次检查持仓
+                if not self.has_position_now():
+                    print(f"[{self.name}] ✅ 持仓已消失，可能已被TP/SL自动平仓或已成功平仓")
+                    return True
+                
+                # 如果持仓还在，尝试备用方法
+                try:
+                    # 检查是否还有持仓行
+                    row = self.driver.find_element(By.CSS_SELECTOR, 'div[data-testid="positions-table-row"]')
+                    # 如果还能找到持仓行，说明还没平仓，尝试备用方法
+                    print(f"[{self.name}] 持仓行仍存在，尝试备用方法...")
+                    all_buttons = self.driver.find_elements(By.TAG_NAME, 'button')
+                    for btn in all_buttons:
+                        try:
                             if btn.is_displayed():
                                 btn_text = btn.text
-                                if '平仓' in btn_text or 'Close' in btn_text:
+                                if ('平仓' in btn_text or 'Close' in btn_text) and 'close-position-button' in (btn.get_attribute('data-testid') or ''):
                                     print(f"[{self.name}] 找到备用平仓按钮: {btn_text}")
                                     try:
                                         btn.click()
-                                        time.sleep(2)
-                                        return True
+                                        time.sleep(0.5)  # 减少等待时间（加快速度）
+                                        if not self.has_position_now():
+                                            return True
                                     except:
                                         pass
-                    except:
-                        # 找不到持仓行，说明可能已经平仓了
-                        print(f"[{self.name}] ✅ 持仓行已消失，可能已经平仓")
-                        return True  # 返回True表示平仓成功（因为已经没有持仓了）
+                        except:
+                            continue
+                except:
+                    # 找不到持仓行，说明可能已经平仓了
+                    print(f"[{self.name}] ✅ 持仓行已消失，可能已经平仓")
+                    return True
             else:
                 print(f"[{self.name}] ⚠️  未找到关闭按钮")
+                # 即使找不到关闭按钮，也检查一下持仓状态
+                if not self.has_position_now():
+                    print(f"[{self.name}] ✅ 持仓已不存在，可能已被TP/SL自动平仓")
+                    return True
         except Exception as e:
             print(f"[{self.name}] ❌ 平仓失败: {e}")
+            # 即使出错，也检查一下持仓状态
+            try:
+                if not self.has_position_now():
+                    print(f"[{self.name}] ✅ 虽然出错，但持仓已消失，可能已平仓")
+                    return True
+            except:
+                pass
         return False
     
     def check_and_fix_tp_sl(self):
-        """检查并补设TP/SL"""
+        """检查并补设TP/SL（返回状态信息，不直接打印）"""
         try:
             row = self.driver.find_element(By.CSS_SELECTOR, 'div[data-testid="positions-table-row"]')
             row_text = row.text
             
             # 如果已经有 (2) 订单，说明已设置
             if '(2)' in row_text:
-                return False
+                return {'success': False, 'already_set': True}
             
             # 点击"创建 TP/SL"按钮
             buttons = row.find_elements(By.TAG_NAME, 'button')
@@ -511,7 +786,6 @@ class HedgeBot:
                         pass
             
             if add_btn:
-                print(f"[{self.name}] 找到创建 TP/SL 按钮，准备点击...")
                 # 滚动到按钮可见
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", add_btn)
                 time.sleep(0.3)
@@ -523,7 +797,6 @@ class HedgeBot:
                     # 如果普通点击失败，使用JavaScript点击
                     self.driver.execute_script("arguments[0].click();", add_btn)
                 
-                print(f"[{self.name}] 已点击创建 TP/SL 按钮")
                 time.sleep(1.5)  # 等待弹窗打开
                 
                 # 填写弹窗
@@ -541,17 +814,18 @@ class HedgeBot:
                         # 如果找不到持仓行，说明不在持仓行中，可以添加
                         modal_inputs.append(inp)
                 
-                print(f"[{self.name}] 找到 {len(modal_inputs)} 个弹窗输入框，开始填写...")
+                # 填写输入框（不打印，由调用者统一处理）
+                filled_count = 0
                 for i, inp in enumerate(modal_inputs[:2]):  # 最多填两个（止盈和止损）
                     try:
                         self.driver.execute_script("arguments[0].focus();", inp)
                         self.driver.execute_script(f"arguments[0].value = '{self.tp_value}';", inp)
                         self.driver.execute_script("arguments[0].dispatchEvent(new Event('input', {bubbles: true}));", inp)
                         self.driver.execute_script("arguments[0].dispatchEvent(new Event('change', {bubbles: true}));", inp)
-                        print(f"[{self.name}] 已填写输入框 {i+1}: {self.tp_value}%")
+                        filled_count += 1
                         time.sleep(0.2)
                     except Exception as e:
-                        print(f"[{self.name}] 填写输入框 {i+1} 失败: {e}")
+                        pass
                 
                 time.sleep(0.5)
                 
@@ -571,7 +845,6 @@ class HedgeBot:
                     if not confirm_btn:
                         confirm_btn = visible_submits[-1]  # 使用最后一个可见的
                     
-                    print(f"[{self.name}] 点击确认按钮...")
                     try:
                         confirm_btn.click()
                     except:
@@ -588,15 +861,20 @@ class HedgeBot:
                     except:
                         pass
                     
-                    print(f"[{self.name}] ✅ TP/SL 设置完成")
-                    return True
+                    # 返回成功状态和相关信息（不打印，由调用者统一处理）
+                    return {
+                        'success': True,
+                        'input_count': len(modal_inputs),
+                        'filled_count': filled_count,
+                        'tp_value': self.tp_value
+                    }
                 else:
-                    print(f"[{self.name}] ⚠️  未找到确认按钮")
+                    return {'success': False, 'error': '未找到确认按钮'}
             else:
-                print(f"[{self.name}] ⚠️  未找到创建 TP/SL 按钮")
+                return {'success': False, 'error': '未找到创建 TP/SL 按钮'}
         except Exception as e:
-            print(f"[{self.name}] 补设TP/SL失败: {e}")
-        return False
+            return {'success': False, 'error': str(e)}
+        return {'success': False, 'error': '未知错误'}
 
 
 class MoreLoginAPI:
@@ -774,10 +1052,40 @@ class MoreLoginAPI:
             raise
 
 
+class TelegramNotifier:
+    """Telegram 推送通知类"""
+    def __init__(self, bot_token=None, chat_id=None):
+        self.bot_token = bot_token
+        self.chat_id = chat_id
+        self.api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage" if bot_token else None
+    
+    def send_message(self, message):
+        """发送消息到Telegram"""
+        if not self.bot_token or not self.chat_id:
+            return False
+        
+        try:
+            data = {
+                'chat_id': self.chat_id,
+                'text': message,
+                'parse_mode': 'HTML'
+            }
+            response = requests.post(self.api_url, json=data, timeout=10)
+            if response.status_code == 200:
+                return True
+            else:
+                print(f"TG推送失败: {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            print(f"TG推送异常: {e}")
+            return False
+
+
 class DualBrowserHedgeBot:
     def __init__(self, url, start_time=None, morelogin_port1=None, morelogin_port2=None, 
                  morelogin_path1=None, morelogin_path2=None, morelogin_env1=None, morelogin_env2=None,
-                 morelogin_api_url="http://127.0.0.1:40000", morelogin_api_id=None, morelogin_api_key=None):
+                 morelogin_api_url="http://127.0.0.1:40000", morelogin_api_id=None, morelogin_api_key=None,
+                 keep_browsers_open=False, tg_bot_token=None, tg_chat_id=None):
         """
         初始化对冲机器人
         
@@ -811,6 +1119,11 @@ class DualBrowserHedgeBot:
         self.cooldown_after_close = 120  # 默认值，会从配置读取
         self.wait_before_force_close = 30  # 默认值，会从配置读取
         self.trading_pair_selected = False  # 标记是否已选择过币种
+        self.pnl_reported = False  # 标记当前这一轮平仓后的PnL是否已打印
+        self.keep_browsers_open = keep_browsers_open  # 是否在脚本退出时保留浏览器
+        self.tg_notifier = TelegramNotifier(tg_bot_token, tg_chat_id) if (tg_bot_token and tg_chat_id) else None
+        self.push_count = 0  # 推送次数统计
+        self.total_pnl = 0.0  # 累计总盈亏（USDC单位）
         
     def init_drivers(self):
         """初始化两个浏览器"""
@@ -818,6 +1131,80 @@ class DualBrowserHedgeBot:
         chrome_options2 = Options()
         driver1 = None
         driver2 = None
+
+        # ========== 优先方式: 使用本地 Chrome + 用户数据目录（不依赖 MoreLogin）==========
+        try:
+            from config import LOCAL_CHROME_PATH, LOCAL_PROFILE1, LOCAL_PROFILE2, CHROMEDRIVER_PATH
+        except ImportError:
+            LOCAL_CHROME_PATH = None
+            LOCAL_PROFILE1 = None
+            LOCAL_PROFILE2 = None
+            CHROMEDRIVER_PATH = None
+        except Exception:
+            LOCAL_CHROME_PATH = None
+            LOCAL_PROFILE1 = None
+            LOCAL_PROFILE2 = None
+            CHROMEDRIVER_PATH = None
+
+        if LOCAL_CHROME_PATH and LOCAL_PROFILE1 and LOCAL_PROFILE2:
+            print("=" * 60)
+            print("使用本地 Chrome 和用户数据目录启动两个浏览器...")
+            print("=" * 60)
+
+            # 浏览器1
+            chrome_options1.binary_location = LOCAL_CHROME_PATH
+            chrome_options1.add_argument(f'--user-data-dir={LOCAL_PROFILE1}')
+            chrome_options1.add_argument('--no-first-run')
+            chrome_options1.add_argument('--no-default-browser-check')
+
+            # 浏览器2
+            chrome_options2.binary_location = LOCAL_CHROME_PATH
+            chrome_options2.add_argument(f'--user-data-dir={LOCAL_PROFILE2}')
+            chrome_options2.add_argument('--no-first-run')
+            chrome_options2.add_argument('--no-default-browser-check')
+
+            # 启动两个 ChromeDriver
+            if CHROMEDRIVER_PATH:
+                print(f"使用指定的 ChromeDriver 路径: {CHROMEDRIVER_PATH}")
+                driver1 = webdriver.Chrome(service=Service(CHROMEDRIVER_PATH), options=chrome_options1)
+                driver2 = webdriver.Chrome(service=Service(CHROMEDRIVER_PATH), options=chrome_options2)
+            else:
+                print("未指定 CHROMEDRIVER_PATH，将使用系统 PATH 中的 chromedriver")
+                driver1 = webdriver.Chrome(options=chrome_options1)
+                driver2 = webdriver.Chrome(options=chrome_options2)
+
+            print("正在启动本地浏览器1和浏览器2...")
+            driver1.get(self.url)
+            driver2.get(self.url)
+            time.sleep(3)
+
+            # 初始化 bot（本地浏览器方式）
+            if driver1 and driver2:
+                try:
+                    from config import TP_VALUE, SL_VALUE, TRADING_PAIR, ORDER_QUANTITY
+                    tp_val = TP_VALUE
+                    sl_val = SL_VALUE
+                    self.trading_pair = TRADING_PAIR
+                    self.order_quantity = ORDER_QUANTITY
+                except Exception:
+                    tp_val = '3'
+                    sl_val = '3'
+                    self.trading_pair = 'BTC'
+                    self.order_quantity = '0.01'
+
+                self.bot1 = HedgeBot(driver1, "浏览器1", is_long=True, tp_value=tp_val, sl_value=sl_val)
+                self.bot2 = HedgeBot(driver2, "浏览器2", is_long=False, tp_value=tp_val, sl_value=sl_val)
+
+                try:
+                    from config import ORDER_INTERVAL, COOLDOWN_AFTER_CLOSE, WAIT_BEFORE_FORCE_CLOSE
+                    self.order_interval = ORDER_INTERVAL
+                    self.cooldown_after_close = COOLDOWN_AFTER_CLOSE
+                    self.wait_before_force_close = WAIT_BEFORE_FORCE_CLOSE
+                except Exception:
+                    pass
+
+                print("✅ 两个本地浏览器已就绪！")
+                return
         
         # ========== 方式1: 使用 MoreLogin API 启动环境（推荐）==========
         api_failed = False
@@ -1150,12 +1537,22 @@ class DualBrowserHedgeBot:
         
         # ========== 方式3: 使用浏览器路径 ==========
         if (api_failed or (not (self.morelogin_api and (self.morelogin_env1 or self.morelogin_env2)) and not (self.morelogin_port1 or self.morelogin_port2))) and (self.morelogin_path1 or self.morelogin_path2):
+            # 尝试从 config 中读取 CHROMEDRIVER_PATH（可选）
+            try:
+                from config import CHROMEDRIVER_PATH
+            except ImportError:
+                CHROMEDRIVER_PATH = None
+            except Exception:
+                CHROMEDRIVER_PATH = None
+
             if self.morelogin_path1:
                 print(f"使用 MoreLogin 浏览器1路径: {self.morelogin_path1}")
                 chrome_options1.binary_location = self.morelogin_path1
-                if USE_AUTO_DRIVER:
-                    driver1 = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options1)
+                # 使用本地已安装的 ChromeDriver
+                if CHROMEDRIVER_PATH:
+                    driver1 = webdriver.Chrome(service=Service(CHROMEDRIVER_PATH), options=chrome_options1)
                 else:
+                    # 未配置 CHROMEDRIVER_PATH 时，依赖系统 PATH 或默认搜索路径
                     driver1 = webdriver.Chrome(options=chrome_options1)
             else:
                 # 如果未配置路径，不启动标准 Chrome，而是报错
@@ -1169,9 +1566,11 @@ class DualBrowserHedgeBot:
             if self.morelogin_path2:
                 print(f"使用 MoreLogin 浏览器2路径: {self.morelogin_path2}")
                 chrome_options2.binary_location = self.morelogin_path2
-                if USE_AUTO_DRIVER:
-                    driver2 = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options2)
+                # 使用本地已安装的 ChromeDriver
+                if CHROMEDRIVER_PATH:
+                    driver2 = webdriver.Chrome(service=Service(CHROMEDRIVER_PATH), options=chrome_options2)
                 else:
+                    # 未配置 CHROMEDRIVER_PATH 时，依赖系统 PATH 或默认搜索路径
                     driver2 = webdriver.Chrome(options=chrome_options2)
             else:
                 # 如果未配置路径，不启动标准 Chrome，而是报错
@@ -1313,12 +1712,61 @@ class DualBrowserHedgeBot:
         
         # 同时下单
         print("🚀 同步下单！")
-        thread1 = threading.Thread(target=self.bot1.place_order)
-        thread2 = threading.Thread(target=self.bot2.place_order)
+        result1 = [None]  # 使用列表以便在线程中修改
+        result2 = [None]
+        error1 = [None]
+        error2 = [None]
+        
+        def place_order_bot1():
+            try:
+                result1[0] = self.bot1.place_order()
+            except Exception as e:
+                error1[0] = str(e)
+                result1[0] = False
+        
+        def place_order_bot2():
+            try:
+                result2[0] = self.bot2.place_order()
+            except Exception as e:
+                error2[0] = str(e)
+                result2[0] = False
+        
+        thread1 = threading.Thread(target=place_order_bot1)
+        thread2 = threading.Thread(target=place_order_bot2)
+        
+        # 同时启动线程，确保真正的同步
         thread1.start()
         thread2.start()
-        thread1.join()
-        thread2.join()
+        
+        # 等待两个线程都完成，但设置超时（最多等待5秒）
+        thread1.join(timeout=5)
+        thread2.join(timeout=5)
+        
+        # 如果线程还在运行，说明可能卡住了
+        if thread1.is_alive() or thread2.is_alive():
+            print("⚠️ 下单操作超时，可能某个浏览器响应缓慢")
+        
+        # 如果结果还是None，说明可能出错了
+        if result1[0] is None:
+            result1[0] = False
+        if result2[0] is None:
+            result2[0] = False
+        
+        # 统一打印消息
+        if result1[0] and result2[0]:
+            print(f"✅ [浏览器1] 和 [浏览器2] 已点击下单按钮")
+        elif result1[0]:
+            error_msg2 = f" ({error2[0]})" if error2[0] else ""
+            print(f"✅ [浏览器1] 已点击下单按钮，❌ [浏览器2] 下单失败{error_msg2}")
+        elif result2[0]:
+            error_msg1 = f" ({error1[0]})" if error1[0] else ""
+            print(f"❌ [浏览器1] 下单失败{error_msg1}，✅ [浏览器2] 已点击下单按钮")
+        else:
+            error_msg1 = f" ({error1[0]})" if error1[0] else ""
+            error_msg2 = f" ({error2[0]})" if error2[0] else ""
+            print(f"❌ [浏览器1] 和 [浏览器2] 下单都失败{error_msg1} / {error_msg2}")
+        
+        return result1[0], result2[0]
     
     def run_cycle(self):
         """运行一个完整周期"""
@@ -1333,15 +1781,16 @@ class DualBrowserHedgeBot:
                 # 使用线程同时执行
                 import threading
                 
+                result1 = [None]
+                result2 = [None]
+                
                 def set_tp_sl_bot1():
                     if not self.bot1.has_position:
-                        print("[浏览器1] 准备设置TP/SL...")
-                        self.bot1.check_and_fix_tp_sl()
+                        result1[0] = self.bot1.check_and_fix_tp_sl()
                 
                 def set_tp_sl_bot2():
                     if not self.bot2.has_position:
-                        print("[浏览器2] 准备设置TP/SL...")
-                        self.bot2.check_and_fix_tp_sl()
+                        result2[0] = self.bot2.check_and_fix_tp_sl()
                 
                 # 创建线程
                 thread1 = threading.Thread(target=set_tp_sl_bot1)
@@ -1355,7 +1804,43 @@ class DualBrowserHedgeBot:
                 thread1.join()
                 thread2.join()
                 
-                print("✅ 两个浏览器的TP/SL设置完成")
+                # 统一打印结果
+                r1 = result1[0]
+                r2 = result2[0]
+                
+                if r1 and r1.get('success'):
+                    if r2 and r2.get('success'):
+                        # 两个都成功
+                        print(f"✅ 浏览器1，2已点击创建 TP/SL 按钮")
+                        print(f"✅ 浏览器1，2找到 {r1.get('input_count', 0)} 个弹窗输入框，已填写 {r1.get('filled_count', 0)} 个: {r1.get('tp_value', '')}%")
+                        print(f"✅ 浏览器1，2已点击确认按钮")
+                        print(f"✅ 浏览器1，2 TP/SL 设置完成")
+                    else:
+                        # 只有浏览器1成功
+                        print(f"✅ 浏览器1已点击创建 TP/SL 按钮，❌ 浏览器2{'已设置' if r2 and r2.get('already_set') else '设置失败'}")
+                        if r1.get('input_count', 0) > 0:
+                            print(f"✅ 浏览器1找到 {r1.get('input_count', 0)} 个弹窗输入框，已填写 {r1.get('filled_count', 0)} 个: {r1.get('tp_value', '')}%")
+                            print(f"✅ 浏览器1已点击确认按钮")
+                        print(f"✅ 浏览器1 TP/SL 设置完成")
+                elif r2 and r2.get('success'):
+                    # 只有浏览器2成功
+                    print(f"❌ 浏览器1{'已设置' if r1 and r1.get('already_set') else '设置失败'}，✅ 浏览器2已点击创建 TP/SL 按钮")
+                    if r2.get('input_count', 0) > 0:
+                        print(f"✅ 浏览器2找到 {r2.get('input_count', 0)} 个弹窗输入框，已填写 {r2.get('filled_count', 0)} 个: {r2.get('tp_value', '')}%")
+                        print(f"✅ 浏览器2已点击确认按钮")
+                    print(f"✅ 浏览器2 TP/SL 设置完成")
+                else:
+                    # 两个都失败或已设置
+                    if r1 and r1.get('already_set') and r2 and r2.get('already_set'):
+                        print("✅ 浏览器1，2 TP/SL 已设置，无需重复设置")
+                    elif r1 and r1.get('already_set'):
+                        print(f"✅ 浏览器1 TP/SL 已设置，❌ 浏览器2设置失败: {r2.get('error', '未知错误') if r2 else '未知错误'}")
+                    elif r2 and r2.get('already_set'):
+                        print(f"❌ 浏览器1设置失败: {r1.get('error', '未知错误') if r1 else '未知错误'}，✅ 浏览器2 TP/SL 已设置")
+                    else:
+                        error1 = r1.get('error', '未知错误') if r1 else '未知错误'
+                        error2 = r2.get('error', '未知错误') if r2 else '未知错误'
+                        print(f"❌ 浏览器1，2 TP/SL 设置失败: {error1} / {error2}")
         
         # 3. 检测持仓状态变化：从有持仓变成没持仓
         if self.bot1.has_position and not pos1:
@@ -1363,8 +1848,7 @@ class DualBrowserHedgeBot:
             # 如果浏览器2还有持仓，立即平掉它（不等待）
             if pos2:
                 print("[浏览器2] ⚡ 检测到浏览器1已平仓，立即平掉浏览器2的持仓...")
-                # 只等待很短时间确保状态稳定，然后立即平仓
-                time.sleep(1)  # 短暂等待确保状态稳定
+                # 不等待，立即平仓（加快速度）
                 if self.bot2.has_position_now():
                     print("[浏览器2] 正在主动平仓...")
                     success = self.bot2.close_position()
@@ -1372,7 +1856,6 @@ class DualBrowserHedgeBot:
                         print("[浏览器2] ✅ 平仓成功")
                     else:
                         print("[浏览器2] ⚠️  平仓失败，将在下次循环重试")
-                    time.sleep(1)
                 else:
                     print("[浏览器2] 持仓已自动平仓")
             # 记录平仓时间，用于冷却
@@ -1383,8 +1866,7 @@ class DualBrowserHedgeBot:
             # 如果浏览器1还有持仓，立即平掉它（不等待）
             if pos1:
                 print("[浏览器1] ⚡ 检测到浏览器2已平仓，立即平掉浏览器1的持仓...")
-                # 只等待很短时间确保状态稳定，然后立即平仓
-                time.sleep(1)  # 短暂等待确保状态稳定
+                # 不等待，立即平仓（加快速度）
                 if self.bot1.has_position_now():
                     print("[浏览器1] 正在主动平仓...")
                     success = self.bot1.close_position()
@@ -1392,7 +1874,6 @@ class DualBrowserHedgeBot:
                         print("[浏览器1] ✅ 平仓成功")
                     else:
                         print("[浏览器1] ⚠️  平仓失败，将在下次循环重试")
-                    time.sleep(1)
                 else:
                     print("[浏览器1] 持仓已自动平仓")
             # 记录平仓时间，用于冷却
@@ -1404,11 +1885,108 @@ class DualBrowserHedgeBot:
         
         # 5. 如果两个都没有持仓，准备开新单
         if not pos1 and not pos2:
+            # 记录进入"空仓状态"这一刻的时间，用来计算冷却时间基准，避免统计PnL时的等待占用冷却时间
+            empty_state_time = datetime.now()
+
+            # 只有在本轮"确实发生过平仓"（last_position_check 非空）时，才统计一次PnL
+            if (self.bot1.last_position_check or self.bot2.last_position_check) and not self.pnl_reported:
+                print("本轮持仓已全部平仓，统计已实现PnL（最多等待15秒，不影响冷却时间）...")
+                pnl1 = None
+                pnl2 = None
+                try:
+                    pnl1 = self.bot1.report_realized_pnl()
+                except Exception as e:
+                    print(f"[浏览器1] 统计PnL时出错: {e}")
+                try:
+                    pnl2 = self.bot2.report_realized_pnl()
+                except Exception as e:
+                    print(f"[浏览器2] 统计PnL时出错: {e}")
+                
+                # 合并打印PnL信息并计算总和
+                pnl_message = ""
+                round_pnl = None  # 本轮盈亏总和
+                round_pnl_display = ""
+                
+                if pnl1 and pnl2:
+                    currency1 = pnl1['currency']
+                    currency2 = pnl2['currency']
+                    currency = currency1 if currency1 == currency2 else f"{currency1}/{currency2}"
+                    unit1 = 'u' if currency1.upper() == 'USDC' else currency1
+                    unit2 = 'u' if currency2.upper() == 'USDC' else currency2
+                    pnl_message = f"浏览器1，2已实现盈亏：{pnl1['amount_display']}{unit1} 和 {pnl2['amount_display']}{unit2}"
+                    
+                    # 计算本轮盈亏总和（如果都是USDC）
+                    if currency1.upper() == 'USDC' and currency2.upper() == 'USDC':
+                        try:
+                            amount1 = pnl1.get('amount_value')
+                            amount2 = pnl2.get('amount_value')
+                            if amount1 is not None and amount2 is not None:
+                                round_pnl = amount1 + amount2
+                                round_pnl_display = f"{round_pnl:+.4f}u"
+                                # 累计到总盈亏
+                                self.total_pnl += round_pnl
+                        except:
+                            pass
+                    
+                    print(pnl_message)
+                    if round_pnl_display:
+                        print(f"本轮盈亏总和：{round_pnl_display}，累计总盈亏：{self.total_pnl:+.4f}u")
+                elif pnl1:
+                    currency1 = pnl1['currency']
+                    unit1 = 'u' if currency1.upper() == 'USDC' else currency1
+                    pnl_message = f"浏览器1已实现盈亏：{pnl1['amount_display']}{unit1}，浏览器2未能获取"
+                    print(pnl_message)
+                    # 如果只有浏览器1的数据，也尝试累计
+                    if currency1.upper() == 'USDC':
+                        try:
+                            amount1 = pnl1.get('amount_value')
+                            if amount1 is not None:
+                                round_pnl = amount1
+                                round_pnl_display = f"{round_pnl:+.4f}u"
+                                self.total_pnl += round_pnl
+                                print(f"本轮盈亏总和：{round_pnl_display}，累计总盈亏：{self.total_pnl:+.4f}u")
+                        except:
+                            pass
+                elif pnl2:
+                    currency2 = pnl2['currency']
+                    unit2 = 'u' if currency2.upper() == 'USDC' else currency2
+                    pnl_message = f"浏览器1未能获取，浏览器2已实现盈亏：{pnl2['amount_display']}{unit2}"
+                    print(pnl_message)
+                    # 如果只有浏览器2的数据，也尝试累计
+                    if currency2.upper() == 'USDC':
+                        try:
+                            amount2 = pnl2.get('amount_value')
+                            if amount2 is not None:
+                                round_pnl = amount2
+                                round_pnl_display = f"{round_pnl:+.4f}u"
+                                self.total_pnl += round_pnl
+                                print(f"本轮盈亏总和：{round_pnl_display}，累计总盈亏：{self.total_pnl:+.4f}u")
+                        except:
+                            pass
+                
+                # 推送到Telegram
+                if pnl_message and self.tg_notifier:
+                    self.push_count += 1
+                    # 构建TG消息
+                    tg_message = f"<b>第 {self.push_count} 轮平仓</b>\n\n{pnl_message}"
+                    if round_pnl_display:
+                        tg_message += f"\n\n<b>本轮盈亏：{round_pnl_display}</b>"
+                        tg_message += f"\n<b>累计总盈亏：{self.total_pnl:+.4f}u</b>"
+                    else:
+                        tg_message += f"\n\n<i>（无法计算盈亏总和，可能币种不一致）</i>"
+                    
+                    if self.tg_notifier.send_message(tg_message):
+                        print(f"✅ 已推送到Telegram（第 {self.push_count} 轮）")
+                    else:
+                        print(f"⚠️ TG推送失败（第 {self.push_count} 轮）")
+                
+                self.pnl_reported = True
+
             # 检查是否刚平仓（需要等待冷却）
             cooldown_time = self.cooldown_after_close
             need_cooldown = False
             if self.bot1.last_position_check:
-                elapsed = (datetime.now() - self.bot1.last_position_check).total_seconds()
+                elapsed = (empty_state_time - self.bot1.last_position_check).total_seconds()
                 if elapsed < cooldown_time:
                     need_cooldown = True
                     wait_time = cooldown_time - elapsed
@@ -1416,7 +1994,7 @@ class DualBrowserHedgeBot:
                     time.sleep(wait_time)
             
             if self.bot2.last_position_check and not need_cooldown:
-                elapsed = (datetime.now() - self.bot2.last_position_check).total_seconds()
+                elapsed = (empty_state_time - self.bot2.last_position_check).total_seconds()
                 if elapsed < cooldown_time:
                     wait_time = cooldown_time - elapsed
                     print(f"等待 {int(wait_time)} 秒冷却后再开新单...")
@@ -1470,9 +2048,43 @@ class DualBrowserHedgeBot:
             
             # 4. 填写数量
             print(f"填写开仓数量: {order_quantity}")
-            self.bot1.fill_quantity(order_quantity)
-            self.bot2.fill_quantity(order_quantity)
+            result1 = self.bot1.fill_quantity(order_quantity)
+            result2 = self.bot2.fill_quantity(order_quantity)
+            if result1 and result2:
+                print(f"✅ [浏览器1] 和 [浏览器2] 已填写开仓数量: {order_quantity}")
+            elif result1:
+                print(f"✅ [浏览器1] 已填写开仓数量: {order_quantity}，❌ [浏览器2] 填写失败")
+            elif result2:
+                print(f"❌ [浏览器1] 填写失败，✅ [浏览器2] 已填写开仓数量: {order_quantity}")
+            else:
+                print(f"❌ [浏览器1] 和 [浏览器2] 填写数量都失败")
             time.sleep(0.5)
+            
+            # 检查余额是否不足（在下单前检查）
+            insufficient1, msg1 = self.bot1.check_insufficient_balance()
+            insufficient2, msg2 = self.bot2.check_insufficient_balance()
+            
+            if insufficient1 or insufficient2:
+                error_msg = "❌ 检测到余额不足，无法开仓：\n"
+                if insufficient1:
+                    error_msg += f"   [浏览器1] {msg1 if msg1 else '余额不足（按钮已禁用）'}\n"
+                if insufficient2:
+                    error_msg += f"   [浏览器2] {msg2 if msg2 else '余额不足（按钮已禁用）'}\n"
+                error_msg += "💡 请检查账户余额，确保有足够的资金开仓"
+                print(error_msg)
+                # 如果已经有持仓，平掉以避免单边风险
+                if self.bot1.has_position_now():
+                    print("正在平掉浏览器1的持仓以避免单边风险...")
+                    self.bot1.close_position()
+                    time.sleep(2)
+                if self.bot2.has_position_now():
+                    print("正在平掉浏览器2的持仓以避免单边风险...")
+                    self.bot2.close_position()
+                    time.sleep(2)
+                # 重置状态，等待下次循环
+                self.bot1.has_position = False
+                self.bot2.has_position = False
+                return  # 退出本次循环，等待下次
             
             # 5. 填写TP/SL
             print("填写止盈止损...")
@@ -1480,19 +2092,89 @@ class DualBrowserHedgeBot:
             self.bot2.fill_tp_sl()
             time.sleep(1)
             
+            # 5.5. 填写TP/SL后，再次检查余额（因为填写TP/SL可能会影响按钮状态）
+            insufficient1, msg1 = self.bot1.check_insufficient_balance()
+            insufficient2, msg2 = self.bot2.check_insufficient_balance()
+            
+            if insufficient1 or insufficient2:
+                error_msg = "❌ 检测到余额不足，无法开仓：\n"
+                if insufficient1:
+                    error_msg += f"   [浏览器1] {msg1 if msg1 else '余额不足（按钮已禁用）'}\n"
+                if insufficient2:
+                    error_msg += f"   [浏览器2] {msg2 if msg2 else '余额不足（按钮已禁用）'}\n"
+                error_msg += "💡 请检查账户余额，确保有足够的资金开仓"
+                print(error_msg)
+                # 如果已经有持仓，平掉以避免单边风险
+                if self.bot1.has_position_now():
+                    print("正在平掉浏览器1的持仓以避免单边风险...")
+                    self.bot1.close_position()
+                    time.sleep(2)
+                if self.bot2.has_position_now():
+                    print("正在平掉浏览器2的持仓以避免单边风险...")
+                    self.bot2.close_position()
+                    time.sleep(2)
+                # 重置状态，等待下次循环
+                self.bot1.has_position = False
+                self.bot2.has_position = False
+                return  # 退出本次循环，等待下次
+            
+            # 6. 同步下单前，最后确认按钮状态
+            print("下单前最后确认按钮状态...")
+            insufficient1_final, msg1_final = self.bot1.check_insufficient_balance()
+            insufficient2_final, msg2_final = self.bot2.check_insufficient_balance()
+            
+            if insufficient1_final or insufficient2_final:
+                error_msg = "❌ 下单前最后检查：检测到余额不足，取消下单：\n"
+                if insufficient1_final:
+                    error_msg += f"   [浏览器1] {msg1_final if msg1_final else '余额不足（按钮已禁用）'}\n"
+                if insufficient2_final:
+                    error_msg += f"   [浏览器2] {msg2_final if msg2_final else '余额不足（按钮已禁用）'}\n"
+                error_msg += "💡 请检查账户余额，确保有足够的资金开仓"
+                print(error_msg)
+                # 如果已经有持仓，平掉以避免单边风险
+                if self.bot1.has_position_now():
+                    print("正在平掉浏览器1的持仓以避免单边风险...")
+                    self.bot1.close_position()
+                    time.sleep(2)
+                if self.bot2.has_position_now():
+                    print("正在平掉浏览器2的持仓以避免单边风险...")
+                    self.bot2.close_position()
+                    time.sleep(2)
+                # 重置状态，等待下次循环
+                self.bot1.has_position = False
+                self.bot2.has_position = False
+                return  # 退出本次循环，等待下次
+            
             # 6. 同步下单
-            self.sync_place_orders()
+            order_result1, order_result2 = self.sync_place_orders()
             
             # 等待持仓出现
             print("等待持仓确认...")
-            for _ in range(20):  # 最多等10秒
-                if self.bot1.has_position_now() and self.bot2.has_position_now():
+            max_wait = 20  # 最多等10秒
+            both_success = False
+            for i in range(max_wait):
+                pos1 = self.bot1.has_position_now()
+                pos2 = self.bot2.has_position_now()
+                
+                if pos1 and pos2:
                     print("✅ 两个浏览器都已开仓成功！")
-                    # 重置平仓时间标记
+                    # 重置平仓时间标记和PnL统计标记
                     self.bot1.last_position_check = None
                     self.bot2.last_position_check = None
+                    self.pnl_reported = False
+                    both_success = True
                     break
+                
                 time.sleep(0.5)
+            
+            # 如果等待超时，不进行任何操作，让下一个循环自然处理
+            if not both_success:
+                pos1 = self.bot1.has_position_now()
+                pos2 = self.bot2.has_position_now()
+                if pos1 or pos2:
+                    print("⚠️ 等待超时：持仓确认未完成，将在下次循环中继续检查")
+                else:
+                    print("⚠️ 等待超时：两个浏览器都没有持仓，将在下次循环中继续检查")
     
     def run(self):
         """主循环"""
@@ -1505,7 +2187,7 @@ class DualBrowserHedgeBot:
         try:
             while self.running:
                 self.run_cycle()
-                time.sleep(2)  # 每2秒检查一次
+                time.sleep(1)  # 每1秒检查一次，提高响应速度
         except KeyboardInterrupt:
             print("\n收到停止信号，正在关闭...")
         finally:
@@ -1513,6 +2195,11 @@ class DualBrowserHedgeBot:
     
     def cleanup(self):
         """清理资源"""
+        if self.keep_browsers_open:
+            print("检测到 KEEP_BROWSERS_OPEN=True，本次退出不关闭浏览器窗口，也不通过 API 关闭 MoreLogin 环境。")
+            print("如果需要，请在 MoreLogin 客户端中手动关闭环境或浏览器。")
+            return
+
         print("正在关闭浏览器...")
         
         # 如果使用 MoreLogin API，先通过 API 关闭环境
@@ -1561,7 +2248,8 @@ if __name__ == "__main__":
             MORELOGIN_PATH1, MORELOGIN_PATH2,
             TRADING_PAIR, ORDER_QUANTITY,
             TP_VALUE, SL_VALUE, ORDER_INTERVAL,
-            COOLDOWN_AFTER_CLOSE, WAIT_BEFORE_FORCE_CLOSE
+            COOLDOWN_AFTER_CLOSE, WAIT_BEFORE_FORCE_CLOSE,
+            KEEP_BROWSERS_OPEN, TG_BOT_TOKEN, TG_CHAT_ID
         )
         print("✅ 已从 config.py 加载配置")
         print(f"   交易币种: {TRADING_PAIR}, 开仓数量: {ORDER_QUANTITY}")
@@ -1584,6 +2272,12 @@ if __name__ == "__main__":
         exit(1)
     
     # ========== 启动脚本 ==========
+    # 检查TG配置
+    if TG_BOT_TOKEN and TG_CHAT_ID:
+        print(f"✅ 已配置Telegram推送 (Bot Token: {TG_BOT_TOKEN[:10]}..., Chat ID: {TG_CHAT_ID})")
+    else:
+        print("ℹ️  未配置Telegram推送（可选，在config.py中配置TG_BOT_TOKEN和TG_CHAT_ID）")
+    
     bot = DualBrowserHedgeBot(
         URL, 
         START_TIME,
@@ -1595,7 +2289,10 @@ if __name__ == "__main__":
         morelogin_env2=MORELOGIN_ENV2,
         morelogin_api_url=MORELOGIN_API_URL,
         morelogin_api_id=MORELOGIN_API_ID,
-        morelogin_api_key=MORELOGIN_API_KEY
+        morelogin_api_key=MORELOGIN_API_KEY,
+        keep_browsers_open=KEEP_BROWSERS_OPEN,
+        tg_bot_token=TG_BOT_TOKEN,
+        tg_chat_id=TG_CHAT_ID
     )
     bot.run()
 
