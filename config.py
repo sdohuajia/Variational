@@ -11,8 +11,8 @@ START_TIME = None  # 例如: "14:30:00" 或 None 表示立即启动
 # 在 MoreLogin 客户端中找到你的两个浏览器环境的 ID 或序号
 # 环境ID 通常是长数字字符串，环境序号是整数（1, 2, 3...）
 # 注意：如果 API 出现 "Http message not readable" 错误，请使用方式2（远程调试端口）
-MORELOGIN_ENV1 = None  # 例如: 1760643143825055744 或 "1760643143825055744" 或 1  # 浏览器1的环境ID或序号
-MORELOGIN_ENV2 = None  # 例如: 1760644815993397248 或 "1760644815993397248" 或 2  # 浏览器2的环境ID或序号
+MORELOGIN_ENV1 = None  # 例如: 1760643143825056744 或 "1760643143825088744" 或 1  # 浏览器1的环境ID或序号
+MORELOGIN_ENV2 = None  # 例如: 1760644815113397248 或 "1760644815193397248" 或 2  # 浏览器2的环境ID或序号
 MORELOGIN_API_URL = "http://127.0.0.1:40000"  # MoreLogin API 地址，默认是本地40000端口（在 MoreLogin API 设置中查看）
 MORELOGIN_API_ID = "None"  # MoreLogin API ID（在 MoreLogin API 设置中查看，例如: "None"）
 MORELOGIN_API_KEY = "None"  # MoreLogin API Key（在 MoreLogin API 设置中查看，例如: "None"）
@@ -44,4 +44,5 @@ ORDER_INTERVAL = 10  # 下单对齐周期（秒），例如 10 表示在 :00, :1
 # ========== 高级配置 ==========
 COOLDOWN_AFTER_CLOSE = 120  # 平仓后等待多少秒再开新仓（给另一个浏览器时间）
 WAIT_BEFORE_FORCE_CLOSE = 30  # 一个浏览器平仓后，等待多少秒再检查并平掉另一个浏览器的持仓
+
 
