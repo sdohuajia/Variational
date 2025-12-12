@@ -45,4 +45,16 @@ ORDER_INTERVAL = 10  # 下单对齐周期（秒），例如 10 表示在 :00, :1
 COOLDOWN_AFTER_CLOSE = 120  # 平仓后等待多少秒再开新仓（给另一个浏览器时间）
 WAIT_BEFORE_FORCE_CLOSE = 30  # 一个浏览器平仓后，等待多少秒再检查并平掉另一个浏览器的持仓
 
+# 是否在脚本退出时保留浏览器窗口（不自动关闭）
+# True  = 按 Ctrl+C 停止脚本后，保留两个浏览器窗口，方便手动查看
+# False = 脚本退出时自动关闭浏览器（默认行为）
+KEEP_BROWSERS_OPEN = True
+
+# ========== Telegram 推送配置（可选）==========
+# 如果不需要TG推送，可以保持为 None
+# 获取方式：
+# 1. 在 Telegram 中搜索 @BotFather，创建新机器人，获取 Bot Token
+# 2. 在 Telegram 中搜索 @userinfobot，获取你的 Chat ID
+TG_BOT_TOKEN = "None"  # 例如: "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+TG_CHAT_ID = "None"  # 例如: "123456789" 或 "-1001234567890"
 
