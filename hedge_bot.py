@@ -364,76 +364,51 @@ class HedgeBot:
     def place_order(self):
         """下单（不打印消息，由调用者统一处理）"""
         try:
-            # 只尝试一次点击，避免重复下单
-            try:
-                btn = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="submit-button"]')
-                if btn:
-                    # 检查按钮是否可见且可点击
-                    if not btn.is_displayed():
-                        time.sleep(0.4)
-                        return False
-                    
-                    # 检查按钮是否被禁用
-                    is_disabled = btn.get_attribute('disabled') is not None
-                    if is_disabled:
-                        # 如果按钮被禁用，说明可能正在处理中，等待一下再检查
-                        time.sleep(0.5)
-                        # 再次检查，如果仍然禁用，说明可能已经下单了
-                        try:
-                            btn_check = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="submit-button"]')
-                            if btn_check.get_attribute('disabled') is not None:
-                                return True  # 按钮被禁用，可能已经下单
-                        except:
-                            pass
-                        return False
-                    
-                    # 保存点击前的按钮文本，用于后续比较
-                    btn_text_before = btn.text.strip()
-                    
-                    # 尝试点击按钮
-                    try:
-                        btn.click()
-                    except:
-                        # 如果普通点击失败，使用JavaScript点击
-                        self.driver.execute_script("arguments[0].click();", btn)
-                    
-                    # 点击后等待足够的时间，让页面有时间响应
-                    time.sleep(1.0)  # 等待时间，确保页面有时间响应
-                    
-                    # 验证订单是否真正提交：检查按钮状态、页面变化或错误提示
-                    try:
-                        btn_after = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="submit-button"]')
-                        btn_text_after = btn_after.text.strip()
+            # 尝试多次点击，确保下单成功
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    btn = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="submit-button"]')
+                    if btn:
+                        # 检查按钮是否可见且可点击
+                        if not btn.is_displayed():
+                            time.sleep(0.2)
+                            continue
                         
-                        # 检查按钮是否被禁用（说明订单可能已提交）
-                        if btn_after.get_attribute('disabled') is not None:
+                        # 检查按钮是否被禁用
+                        is_disabled = btn.get_attribute('disabled') is not None
+                        if is_disabled:
+                            # 如果按钮被禁用，等待一下再试
+                            time.sleep(0.3)
+                            continue
+                        
+                        # 尝试点击按钮
+                        try:
+                            btn.click()
+                        except:
+                            # 如果普通点击失败，使用JavaScript点击
+                            self.driver.execute_script("arguments[0].click();", btn)
+                        
+                        # 点击后等待一下，检查按钮状态是否变化（说明点击生效）
+                        time.sleep(0.2)
+                        
+                        # 再次检查按钮状态，如果按钮被禁用或文本变化，说明点击可能生效了
+                        try:
+                            btn_after = self.driver.find_element(By.CSS_SELECTOR, 'button[data-testid="submit-button"]')
+                            # 如果按钮状态发生变化，或者按钮暂时不可见，可能说明点击生效了
+                            if btn_after.get_attribute('disabled') is not None or not btn_after.is_displayed():
+                                return True
+                        except:
+                            # 如果找不到按钮了，可能说明页面状态变化，点击可能生效了
                             return True
                         
-                        # 检查按钮文本是否变化（例如从"买入BTC"变成"提交中"等）
-                        if btn_text_after and btn_text_after != btn_text_before:
-                            return True
-                        
-                        # 检查是否有错误提示（说明订单可能被拒绝）
-                        try:
-                            error_elements = self.driver.find_elements(By.CSS_SELECTOR, '[class*="error"], [class*="Error"], [data-testid*="error"]')
-                            for elem in error_elements:
-                                if elem.is_displayed() and elem.text.strip():
-                                    # 如果有错误提示，返回False，让调用者知道下单可能失败
-                                    return False
-                        except:
-                            pass
-                        
-                        # 如果按钮仍然可见且可点击，可能点击没有生效
-                        # 但为了避免重复下单，我们假设点击已经生效，返回True
-                        # 如果确实没有生效，会在后续的持仓检查中发现
                         return True
-                    except:
-                        # 如果找不到按钮了，可能说明页面状态变化，点击可能生效了
-                        return True
-                    
-                    return True
-            except Exception as e:
-                return False
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        time.sleep(0.2)
+                        continue
+                    else:
+                        return False
         except Exception as e:
             pass
         return False
@@ -1149,7 +1124,6 @@ class DualBrowserHedgeBot:
         self.tg_notifier = TelegramNotifier(tg_bot_token, tg_chat_id) if (tg_bot_token and tg_chat_id) else None
         self.push_count = 0  # 推送次数统计
         self.total_pnl = 0.0  # 累计总盈亏（USDC单位）
-        self._opening_order = False  # 标记是否正在开新单，避免重复执行
         
     def init_drivers(self):
         """初始化两个浏览器"""
@@ -1911,13 +1885,6 @@ class DualBrowserHedgeBot:
         
         # 5. 如果两个都没有持仓，准备开新单
         if not pos1 and not pos2:
-            # 如果正在开新单，跳过本次循环，避免重复下单
-            if self._opening_order:
-                return
-            
-            # 标记正在开新单，避免重复执行
-            self._opening_order = True
-            
             # 记录进入"空仓状态"这一刻的时间，用来计算冷却时间基准，避免统计PnL时的等待占用冷却时间
             empty_state_time = datetime.now()
 
@@ -2117,7 +2084,6 @@ class DualBrowserHedgeBot:
                 # 重置状态，等待下次循环
                 self.bot1.has_position = False
                 self.bot2.has_position = False
-                self._opening_order = False  # 重置开新单标志
                 return  # 退出本次循环，等待下次
             
             # 5. 填写TP/SL
@@ -2150,7 +2116,6 @@ class DualBrowserHedgeBot:
                 # 重置状态，等待下次循环
                 self.bot1.has_position = False
                 self.bot2.has_position = False
-                self._opening_order = False  # 重置开新单标志
                 return  # 退出本次循环，等待下次
             
             # 6. 同步下单前，最后确认按钮状态
@@ -2178,7 +2143,6 @@ class DualBrowserHedgeBot:
                 # 重置状态，等待下次循环
                 self.bot1.has_position = False
                 self.bot2.has_position = False
-                self._opening_order = False  # 重置开新单标志
                 return  # 退出本次循环，等待下次
             
             # 6. 同步下单
@@ -2198,7 +2162,6 @@ class DualBrowserHedgeBot:
                     self.bot1.last_position_check = None
                     self.bot2.last_position_check = None
                     self.pnl_reported = False
-                    self._opening_order = False  # 重置开新单标志
                     both_success = True
                     break
                 
@@ -2212,9 +2175,6 @@ class DualBrowserHedgeBot:
                     print("⚠️ 等待超时：持仓确认未完成，将在下次循环中继续检查")
                 else:
                     print("⚠️ 等待超时：两个浏览器都没有持仓，将在下次循环中继续检查")
-            
-            # 无论成功与否，都要重置开新单标志
-            self._opening_order = False
     
     def run(self):
         """主循环"""
